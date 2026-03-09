@@ -1,0 +1,13 @@
+---
+alwaysApply: true
+---
+
+# MLflow in this project
+
+When building the UCI Bank Marketing project (training, evaluation, models):
+
+- **Use MLflow** for experiment tracking, logging metrics/params, and model registry.
+- **Integrate incrementally**: add MLflow as we build each piece (e.g. data prep, then training, then evaluation), not all at once.
+- **Don’t rush**: one clear step at a time; avoid dropping in large scripts or many features in a single change.
+
+Existing MLflow usage lives in `train.py`; extend it gradually as the pipeline grows.
