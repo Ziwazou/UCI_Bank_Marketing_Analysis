@@ -1,0 +1,168 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+\title{Rapport d'analyse \\ Prédiction de souscription à un dépôt à terme (UCI Bank Marketing)}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+%==============================================================================
+\section{Introduction}
+%==============================================================================
+
+Les campagnes de marketing direct (appels téléphoniques, e-mails, etc.) constituent un levier important pour les établissements bancaires afin de proposer des produits tels que les dépôts à terme. Pour optimiser ces campagnes, il est essentiel de cibler les clients les plus susceptibles de souscrire, afin de limiter les coûts de contact tout en maximisant le taux de conversion. La prédiction du comportement de souscription à partir des données disponibles (profil client, historique de contacts, contexte de l'appel) relève donc à la fois de l'analyse statistique et du machine learning supervisé (classification binaire).
+
+Ce rapport présente une analyse complète du jeu de données \emph{UCI Bank Marketing}, issu de campagnes d'appels téléphoniques d'une banque portugaise. L'objectif est de prédire si un client souscrira ou non à un dépôt à terme (variable cible binaire \texttt{y}), en s'appuyant sur des analyses exploratoires rigoureuses, une modélisation par régression logistique pour l'interprétabilité, et une comparaison de plusieurs algorithmes de classification (arbre de décision, forêt aléatoire, XGBoost). Une attention particulière est portée au déséquilibre de classes (environ 88\,\% de non-souscripteurs) et au choix des métriques d'évaluation adaptées à l'objectif métier. La structure du rapport est la suivante : méthodologie globale, analyses exploratoires, modélisation statistique et ML, résultats et interprétation, puis discussion critique et limites.
+
+%==============================================================================
+\section{Méthodologie}
+%==============================================================================
+
+\subsection{Objectif et données}
+L'objectif est de prédire si un client souscrira à un dépôt à terme (\texttt{y} = yes/no) à partir des données de campagnes d'appels téléphoniques d'une banque portugaise (dataset UCI Bank Marketing). Le jeu de données comporte \textbf{45\,211} lignes et \textbf{17} colonnes (âge, profession, situation familiale, éducation, solde, prêts, résultat de campagnes précédentes, etc.).
+
+Le contexte métier est celui du marketing direct : la banque souhaite cibler les clients les plus susceptibles de souscrire à un produit (dépôt à terme) afin d'optimiser les campagnes d'appels et de limiter les coûts tout en maximisant le taux de conversion. La variable cible binaire reflète le résultat de chaque contact (souscription ou non). Les variables explicatives décrivent le profil du client (démographique, financier), le contexte de l'appel (mois, jour, nombre de contacts dans la campagne) et l'historique des campagnes précédentes (\texttt{poutcome}, \texttt{pdays}, \texttt{previous}).
+
+\subsection{Pipeline global}
+Le travail est organisé en quatre étapes principales, de l'exploration à la comparaison des modèles.
+\begin{enumerate}
+  \item \textbf{Analyses exploratoires} : qualité des données (valeurs manquantes, \texttt{unknown}, doublons), détection des valeurs aberrantes (méthode IQR, boxplots), description des variables (catégorielles et numériques) et analyse de leur lien avec la cible (taux de souscription par modalité, statistiques par classe, corrélations).
+  \item \textbf{Sélection de variables} : tests du $\chi^2$ d'indépendance pour les variables catégorielles (seuil 5\,\%) ; analyse des corrélations et de la multicolinéarité pour les variables numériques, avec exclusion de \texttt{pdays} (corrélation $\approx 0{,}99$ avec \texttt{previous}) et exclusion systématique de \texttt{duration} en phase de modélisation (risque de fuite d'information, la durée n'étant connue qu'après l'appel).
+  \item \textbf{Modélisation statistique} : régression logistique avec les variables retenues, préprocessing par \texttt{RobustScaler} (numériques) et \texttt{OneHotEncoder} (catégorielles), split 80\,\% train / 20\,\% test stratifié. 
+  \item \textbf{Modèles de classification (ML)} : entraînement et comparaison de l'arbre de décision, de la forêt aléatoire et de XGBoost ; split 80/10/10 (train/validation/test) stratifié ; SMOTE appliqué uniquement sur l'échantillon d'entraînement pour gérer le déséquilibre ; sélection du meilleur modèle sur l'ensemble de validation selon la métrique prioritaire \textbf{recall}, puis évaluation finale sur le jeu de test.
+\end{enumerate}
+
+\subsection{Déséquilibre de classes et métriques}
+La cible est fortement déséquilibrée (environ 88\,\% de no, 12\,\% de yes). Dans ce cadre, l'accuracy est trompeuse : un modèle qui prédit toujours no atteindrait environ 88\,\% d'accuracy tout en étant inutile pour la décision. Le \textbf{recall} (sensibilité), \textbf{c'est-à-dire la proportion de vrais souscripteurs correctement détectés}, est donc privilégié pour un objectif marketing visant à identifier un maximum de clients potentiels. Les modèles sont comparés sur recall, precision, F1 et ROC-AUC ; le ROC-AUC résume la capacité discriminative du modèle quelle que soit le seuil de classification choisi.
+
+\subsection{Prétraitement commun (ML)}
+Les variables catégorielles sont encodées via \texttt{OneHotEncoder} avec suppression de la première modalité (\texttt{drop="first"}) pour éviter la colinéarité (multicolinéarité) dans les modèles linéaires et réduire le nombre de features. Les variables numériques sont mises à l'échelle avec \texttt{RobustScaler} (centrage par la médiane, réduction par l'écart interquartile), plus robuste aux valeurs extrêmes que la standardisation par moyenne et écart-type (\texttt{StandardScaler}), ce qui est pertinent compte tenu des distributions asymétriques et des outliers identifiés en phase exploratoire (balance, duration, campaign). SMOTE (Synthetic Minority Over-sampling Technique) est appliqué uniquement sur l'échantillon d'entraînement après transformation des features, afin d'équilibrer les classes (50/50 sur le train) et d'améliorer l'apprentissage sur la classe minoritaire sans introduire de fuite d'information vers les ensembles de validation et de test.
+
+\subsection{Répartition de la cible et choix du recall}
+Avec environ 88\,\% de no et 12\,\% de yes, un modèle naïf qui prédit toujours no atteindrait une accuracy d'environ 88\,\% tout en ayant un recall de 0\,\% pour la classe d'intérêt. Pour un objectif de ciblage marketing (identifier un maximum de clients susceptibles de souscrire), on privilégie donc le \emph{recall} (sensibilité) : on accepte de contacter davantage de personnes (y compris des faux positifs) pour ne pas rater les vrais souscripteurs.
+
+%==============================================================================
+\section{Analyses exploratoires}
+%==============================================================================
+
+Les analyses exploratoires visent à comprendre la structure des données, à identifier les problèmes de qualité (manquants, unknown, outliers) et à caractériser les relations entre les variables explicatives et la cible avant toute modélisation. Cette étape conditionne les choix de prétraitement et de sélection de variables pour les sections suivantes.
+
+\subsection{Qualité et préparation des données}
+\begin{itemize}
+  \item \textbf{Valeurs manquantes} : aucune valeur \texttt{NAN} explicite dans le fichier ; les manquants sont en partie codés sous forme de modalité \texttt{unknown} pour certaines variables catégorielles.
+  \item \textbf{Valeurs \texttt{unknown}} : présentes pour \texttt{poutcome} (81,75\,\%), \texttt{contact} (28,80\,\%), \texttt{education} (4,11\,\%) et \texttt{job} (0,64\,\%). Traitement retenu : suppression de la variable \texttt{contact} (trop de unknown et peu d'apport après analyse) ; imputation par le mode pour \texttt{education} et \texttt{job} afin de conserver les enregistrements ; \texttt{poutcome} conservé tel quel comme modalité interprétable (pas de contact précédent ou information manquante).
+  \item \textbf{Doublons et cohérence} : vérification des doublons (aucun ou traitement adapté) et des règles métier de base (ex. âge dans une plage raisonnable, \texttt{pdays} $\geq -1$, etc.).
+  \item \textbf{Valeurs aberrantes} : repérage par méthode IQR (interquartile range) sur les variables numériques ; visualisation par boxplots. Les variables \texttt{balance}, \texttt{duration}, \texttt{campaign} présentent des queues longues et des valeurs extrêmes (ex. \texttt{balance} négatif ou très élevé, \texttt{campaign} pouvant atteindre plusieurs dizaines de contacts). Le \texttt{RobustScaler} en modélisation limite l'impact de ces outliers sur les estimateurs.
+\end{itemize}
+
+\subsection{Description des variables}
+Les variables catégorielles incluent \texttt{job} (type d'emploi : management, technician, blue-collar, etc.), \texttt{marital} (situation familiale), \texttt{education}, \texttt{default} (crédit en défaut), \texttt{housing} (prêt immobilier), \texttt{loan} (prêt personnel), \texttt{month} (dernier mois de contact), \texttt{poutcome} (résultat de la campagne marketing précédente). Les variables numériques incluent \texttt{age}, \texttt{balance} (solde annuel moyen en euros), \texttt{day} (dernier jour du mois de contact), \texttt{duration} (durée du dernier appel en secondes), \texttt{campaign} (nombre de contacts durant cette campagne), \texttt{pdays} (jours depuis le dernier contact d'une campagne précédente, $-1$ si pas de contact), \texttt{previous} (nombre de contacts avant cette campagne). La répartition de la cible montre un net déséquilibre : environ 39\,922 no (88\,\%) et 5\,289 yes (12\,\%), ce qui justifie l'usage de techniques dédiées (SMOTE, métrique recall) et la prudence dans l'interprétation de l'accuracy.
+
+\subsection{Lien avec la cible}
+\begin{itemize}
+  \item \textbf{Catégorielles} : le taux de souscription varie fortement selon les modalités. Par exemple, \texttt{poutcome=success} est très associé au yes (taux de souscription élevé, de l'ordre de 65\,\%), alors que \texttt{unknown} ou \texttt{failure} correspondent à des taux plus bas. La variable \texttt{month} montre des variations saisonnières (meilleure réponse à certains mois). Les variables \texttt{housing} et \texttt{loan} sont également liées à la cible et seront testées au $\chi^2$.
+  \item \textbf{Numeriques} : les statistiques (moyenne, médiane) par classe \texttt{y} montrent que les souscripteurs ont en moyenne une \texttt{duration} d'appel plus longue (effet mécanique : plus on parle, plus la probabilité de souscrire peut augmenter, d'où l'exclusion de \texttt{duration} en prédiction), un \texttt{balance} légèrement plus élevé, et des indicateurs \texttt{pdays} / \texttt{previous} reflétant un contact plus récent ou plus fréquent lors de campagnes précédentes.
+  \item \textbf{Corrélation} : les corrélations entre variables numériques sont généralement modérées. La forte corrélation entre \texttt{pdays} et \texttt{previous} ($r \approx 0{,}99$) conduit à retirer \texttt{pdays} pour limiter la multicolinéarité ; \texttt{previous} est conservé.
+\end{itemize}
+
+\subsection{Tests statistiques (inférence)}
+Un test du $\chi^2$ d'indépendance est réalisé entre chaque variable catégorielle et la cible \texttt{y}. Les variables significatives au seuil de 5\,\% sont retenues pour la régression logistique (par exemple \texttt{housing}, \texttt{education}, \texttt{job}, \texttt{marital}, \texttt{month}, \texttt{poutcome}, \texttt{default}, \texttt{loan}). Les variables numériques sont analysées via la comparaison des distributions selon \texttt{y} et via la matrice de corrélation pour détecter les redondances. Cette étape permet de construire un jeu de features cohérent pour la modélisation tout en limitant le bruit et la multicolinéarité.
+
+%==============================================================================
+\section{Modélisation statistique et ML}
+%==============================================================================
+
+La modélisation est réalisée en deux temps : une régression logistique pour disposer d'un modèle interprétable et d'une baseline, puis une comparaison de trois algorithmes de machine learning (arbre de décision, forêt aléatoire, XGBoost) dans un pipeline commun avec gestion du déséquilibre par SMOTE et sélection du modèle sur la métrique recall.
+
+\subsection{Régression logistique}
+La régression logistique offre une baseline interprétable et un cadre statistique pour relier les variables explicatives à la probabilité de souscription.
+\begin{itemize}
+  \item \textbf{Variables} : les variables catégorielles retenues sont celles significatives au $\chi^2$ (job, marital, education, default, housing, loan, month, poutcome) ; les variables numériques utilisées sont age, balance, day, campaign, previous. La variable \texttt{duration} est exclue volontairement car elle n'est connue qu'après l'appel et son inclusion créerait une fuite d'information en situation réelle de ciblage.
+  \item \textbf{Prétraitement} : un \texttt{ColumnTransformer} applique \texttt{RobustScaler} sur les variables numériques et \texttt{OneHotEncoder(drop="first")} sur les catégorielles, puis un \texttt{Pipeline} enchaîne ce prétraitement avec \texttt{LogisticRegression}.
+  \item \textbf{Entraînement} : \texttt{LogisticRegression} pour tenir compte du déséquilibre, split 80\,\% train / 20\,\% test stratifié sur \texttt{y}. Une table de coefficients (odds ratios, p-values) est produite via \texttt{statsmodels} pour l'interprétation des effets de chaque variable sur la probabilité de souscription.
+\end{itemize}
+
+\subsection{Pipeline ML (Decision Tree, Random Forest, XGBoost)}
+Trois algorithmes de classification sont comparés dans un pipeline commun afin d'identifier celui qui maximise le recall sur l'ensemble de validation.
+\begin{itemize}
+  \item \textbf{Features} : mêmes variables que pour la régression logistique (sans \texttt{duration}), sur le jeu complet après nettoyage des \texttt{unknown} (contact supprimé, education et job imputés).
+  \item \textbf{Split} : 80\,\% train, 10\,\% validation, 10\,\% test, avec stratification sur la cible pour préserver la proportion de yes dans chaque échantillon.
+  \item \textbf{Déséquilibre} : SMOTE (bibliothèque \texttt{imblearn}) est appliqué sur l'échantillon d'entraînement après le préprocessing (transformation des features), avec \texttt{sampling\_strategy="auto"} et \texttt{k\_neighbors=5}, pour équilibrer les classes à 50/50 sur le train. La validation et le test restent sur les données réelles (non rééquilibrées).
+  \item \textbf{Modèles} : \texttt{DecisionTreeClassifier} et \texttt{RandomForestClassifier} 
+  \item \textbf{Sélection du modèle} : les modèles sont classés sur l'ensemble de \textbf{validation} selon la métrique \textbf{recall}. Le meilleur modèle est retenu puis évalué une seule fois sur le jeu de \textbf{test} pour rapporter les performances finales.
+\end{itemize}
+
+%==============================================================================
+\section{Résultats et interprétation}
+%==============================================================================
+
+Cette section présente les performances de la régression logistique (baseline) puis la comparaison des trois modèles ML sur les ensembles de validation et de test, avec une interprétation du choix de XGBoost et du compromis entre les métriques.
+
+\subsection{Régression logistique}
+La régression logistique fournit une baseline interprétable via les odds ratios et la significativité des variables (p-values). Les performances (accuracy, precision, recall, F1, ROC-AUC) sont calculées sur le jeu de test (20\,\%). La courbe ROC du modèle logistique est tracée conjointement avec celles des modèles ML pour comparaison visuelle des capacités discriminatives. Ce modèle sert de référence pour évaluer l'apport des algorithmes plus complexes (arbres, forêts, gradient boosting).
+
+\subsection{Comparaison des modèles ML (validation et test)}
+Les tableaux de résultats sur les ensembles de validation puis de test illustrent le compromis entre les métriques. Sur le \textbf{jeu de test}, les performances typiques sont résumées dans le tableau suivant (valeurs arrondies).
+
+\begin{center}
+\begin{tabular}{lccccc}
+\toprule
+Modèle & Accuracy & Precision & Recall & F1 & ROC-AUC \\
+\midrule
+XGBoost & 0,58 & 0,19 & \textbf{0,78} & 0,31 & 0,77 \\
+Random Forest & 0,89 & 0,57 & 0,29 & 0,39 & 0,78 \\
+Decision Tree & 0,81 & 0,27 & 0,35 & 0,31 & 0,61 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{itemize}
+  \item \textbf{XGBoost} : recall $\approx 78\,\%$, ROC-AUC $\approx 0{,}77$, accuracy $\approx 58\,\%$, precision $\approx 19\,\%$. Il détecte le plus de vrais souscripteurs au prix d'une precision faible.
+  \item \textbf{Random Forest} : accuracy et precision plus élevées (environ 89\,\% et 57\,\%), mais recall nettement plus faible ($\approx 29\,\%$) : le modèle est plus conservateur et rate une grande partie des souscripteurs.
+  \item \textbf{Decision Tree} : performances intermédiaires en recall (environ 35\,\%) et ROC-AUC plus faible ($\approx 0{,}61$), ce qui reflète une moindre capacité à séparer les deux classes.
+\end{itemize}
+
+\subsection{Meilleur modèle retenu}
+Le modèle retenu est \textbf{XGBoost}, car il maximise le \textbf{recall} sur l'ensemble de validation, en cohérence avec l'objectif métier (identifier un maximum de clients susceptibles de souscrire). La courbe ROC (taux de vrais positifs en fonction du taux de faux positifs pour différents seuils) et la matrice de confusion du meilleur modèle sont produites sur le jeu de test pour une évaluation finale non biaisée par la sélection du modèle. La courbe ROC du modèle logistique (section 3) est également tracée sur le même graphique pour comparaison ; elle se situe en général en dessous de celle de XGBoost et de Random Forest, ce qui confirme l'intérêt des modèles ML pour la discrimination des classes dans ce jeu de données.
+
+\subsection{Interprétation}
+\begin{itemize}
+  \item Un recall élevé pour XGBoost (environ 78\,\%) signifie que la majorité des vrais souscripteurs sont détectés, au prix d'un grand nombre de faux positifs (precision faible, environ 19\,\%). Cette configuration est cohérente avec une stratégie de prospection large : mieux vaut contacter trop de prospects que d'en manquer un grand nombre.
+  \item L'accuracy plus faible de XGBoost (environ 58\,\%) par rapport à Random Forest (environ 89\,\%) est attendue en contexte déséquilibré : un modèle qui prédit beaucoup de yes aura une accuracy plus basse car la classe majoritaire est no. L'accuracy n'est pas un critère prioritaire lorsque le recall est privilégié.
+  \item Le ROC-AUC ($\approx 0{,}76$--$0{,}77$) indique une capacité raisonnable à discriminer les deux classes. Un réglage du seuil de décision (au lieu du seuil par défaut 0,5) permettrait d'ajuster le compromis precision/recall selon le coût métier (coût d'un appel vs gain d'une souscription).
+\end{itemize}
+
+%==============================================================================
+\section{Discussion critique et limites}
+%==============================================================================
+
+Une lecture critique des résultats et des choix méthodologiques permet d'identifier les limites de l'étude et de préciser le cadre de validité des conclusions. Les points abordés concernent à la fois les choix techniques (duration, déséquilibre, partition des données) et le contexte des données (unknown, temporalité, causalité, objectif métier).
+
+\subsection{Limites méthodologiques}
+\begin{itemize}
+  \item \textbf{Duration} : la variable \texttt{duration} (durée de l'appel en secondes) a été exclue en modélisation car elle n'est connue qu'après la fin de l'appel. En situation réelle de ciblage, on souhaite prédire la souscription \emph{avant} ou \emph{au début} du contact ; inclure \texttt{duration} reviendrait à utiliser une information qui n'existe pas au moment de la décision, donc à une fuite d'information et à des performances non reproductibles en production.
+  \item \textbf{Déséquilibre} : malgré l'utilisation de SMOTE, les performances sur la classe minoritaire restent sensibles au seuil de décision et à la qualité de l'oversampling (risque de sur-apprentissage sur des exemples synthétiques). D'autres stratégies auraient pu être testées : pondération des classes dans la fonction de perte, undersampling de la classe majoritaire, ou optimisation directe de métriques comme l'aire sous la courbe precision-recall.
+\end{itemize}
+
+\subsection{Limites des données et du contexte}
+\begin{itemize}
+  \item \textbf{Valeurs \texttt{unknown}} : \texttt{poutcome} comporte une forte proportion d'unknown (81\,\%). Le traitement retenu (conservation de la modalité telle quelle) peut biaiser les relations avec la cible, car unknown regroupe à la fois des clients jamais contactés et des informations manquantes. La suppression de la variable \texttt{contact} réduit l'information disponible pour environ 29\,\% des enregistrements et peut masquer un effet du type de contact (téléphonique, etc.).
+  \item \textbf{Objectif métier} : le choix du recall comme métrique prioritaire correspond à un objectif de maximisation du nombre de prospects identifiés comme susceptibles de souscrire. Un autre objectif (minimiser les coûts de relance, maximiser le profit par contact, ou équilibrer precision et recall) pourrait conduire à retenir un autre modèle (ex. Random Forest) ou à ajuster le seuil de classification de XGBoost.
+\end{itemize}
+
+\subsection{Synthèse}
+Ce rapport a présenté une analyse complète du dataset UCI Bank Marketing, de l'exploration des données à la comparaison de modèles de classification en passant par la régression logistique. La prise en compte du déséquilibre de classes (SMOTE sur l'échantillon d'entraînement, métrique recall pour la sélection du modèle) et l'exclusion de la variable \texttt{duration} ont permis de construire un pipeline adapté au contexte métier de ciblage en amont des campagnes. XGBoost a été retenu comme meilleur compromis pour maximiser le recall sur l'ensemble de test (environ 78\,\%), au prix d'une precision plus faible (environ 19\,\%), ce qui correspond à une stratégie de prospection large. Les limites identifiées (une seule partition train/validation/test, forte proportion d'unknown dans \texttt{poutcome}, nature prédictive et non causale des modèles.
+
+\end{document}
