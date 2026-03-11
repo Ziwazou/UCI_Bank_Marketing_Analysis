@@ -1,0 +1,16 @@
+# Fichiers auxiliaires LaTeX (garder uniquement rapport.tex et rapport.pdf)
+*.aux
+*.log
+*.toc
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
+*.xdv
+*.nav
+*.snm
+*.vrb
+*.lof
+*.lot
